@@ -91,7 +91,7 @@ impl<T: EventMessage> Connection<T> {
         }
         if self.pending_flush.is_none() && !self.needs_flush {
             if let Some(cmd) = self.pending_commands.pop_front() {
-                tracing::trace!("Sending {:?}", cmd);
+                tracing::trace!(?cmd, "Sending");
                 let msg = serde_json::to_string(&cmd)?;
                 self.ws.start_send_unpin(msg.into())?;
                 self.pending_flush = Some(cmd);
@@ -132,7 +132,7 @@ impl<T: EventMessage + Unpin> Stream for Connection<T> {
             Some(Ok(WsMessage::Text(text))) => {
                 let ready = match serde_json::from_str::<Message<T>>(&text) {
                     Ok(msg) => {
-                        tracing::trace!("Received {:?}", msg);
+                        tracing::trace!(?msg, "Received");
                         Ok(msg)
                     }
                     Err(err) => {
