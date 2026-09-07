@@ -21,7 +21,7 @@ use chromiumoxide_cdp::cdp::js_protocol;
 use chromiumoxide_cdp::cdp::js_protocol::debugger::GetScriptSourceParams;
 use chromiumoxide_cdp::cdp::js_protocol::runtime::{
     AddBindingParams, CallArgument, CallFunctionOnParams, EvaluateParams, ExecutionContextId,
-    RemoteObjectType, ScriptId,
+    RemoteObjectId, RemoteObjectType, ScriptId,
 };
 use chromiumoxide_cdp::cdp::{IntoEventKind, browser_protocol};
 use chromiumoxide_types::*;
@@ -490,6 +490,20 @@ impl Page {
         Ok(resp.result.root)
     }
 
+    pub async fn get_element(&self, by: GetElementBy) -> Result<Element> {
+        match by {
+            GetElementBy::NodeId(node_id) => {
+                Element::new_by_node_id(self.inner.clone(), node_id).await
+            }
+            GetElementBy::BackendNodeId(backend_node_id) => {
+                Element::new_by_backend_node_id(self.inner.clone(), backend_node_id).await
+            }
+            GetElementBy::RemoteObjectId(remote_object_id) => {
+                Element::new_by_remote_object_id(self.inner.clone(), remote_object_id).await
+            }
+        }
+    }
+
     /// Returns the first element in the document which matches the given CSS
     /// selector.
     ///
@@ -497,7 +511,7 @@ impl Page {
     pub async fn find_element(&self, selector: impl Into<String>) -> Result<Element> {
         let root = self.get_document().await?.node_id;
         let node_id = self.inner.find_element(selector, root).await?;
-        Element::new(Arc::clone(&self.inner), node_id).await
+        Element::new_by_node_id(Arc::clone(&self.inner), node_id).await
     }
 
     /// Return all `Element`s in the document that match the given selector
@@ -514,7 +528,7 @@ impl Page {
     pub async fn find_xpath(&self, selector: impl Into<String>) -> Result<Element> {
         self.get_document().await?;
         let node_id = self.inner.find_xpaths(selector).await?[0];
-        Element::new(Arc::clone(&self.inner), node_id).await
+        Element::new_by_node_id(Arc::clone(&self.inner), node_id).await
     }
 
     /// Return all `Element`s in the document that match the given xpath selector
@@ -1514,4 +1528,11 @@ impl From<MediaTypeParams> for String {
             MediaTypeParams::Print => "print".to_string(),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum GetElementBy {
+    NodeId(NodeId),
+    BackendNodeId(BackendNodeId),
+    RemoteObjectId(RemoteObjectId),
 }

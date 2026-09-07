@@ -37,7 +37,7 @@ pub struct Element {
 }
 
 impl Element {
-    pub(crate) async fn new(tab: Arc<PageInner>, node_id: NodeId) -> Result<Self> {
+    pub(crate) async fn new_by_node_id(tab: Arc<PageInner>, node_id: NodeId) -> Result<Self> {
         let backend_node_id = tab
             .execute(
                 DescribeNodeParams::builder()
@@ -70,13 +70,72 @@ impl Element {
         })
     }
 
+    pub(crate) async fn new_by_backend_node_id(
+        tab: Arc<PageInner>,
+        backend_node_id: BackendNodeId,
+    ) -> Result<Self> {
+        let node_id = tab
+            .execute(
+                DescribeNodeParams::builder()
+                    .backend_node_id(backend_node_id)
+                    .depth(100)
+                    .build(),
+            )
+            .await?
+            .node
+            .node_id;
+
+        let resp = tab
+            .execute(
+                ResolveNodeParams::builder()
+                    .backend_node_id(backend_node_id)
+                    .build(),
+            )
+            .await?;
+
+        let remote_object_id = resp
+            .result
+            .object
+            .object_id
+            .ok_or_else(|| CdpError::msg(format!("No object Id found for {node_id:?}")))?;
+        Ok(Self {
+            remote_object_id,
+            backend_node_id,
+            node_id,
+            tab,
+        })
+    }
+
+    pub(crate) async fn new_by_remote_object_id(
+        tab: Arc<PageInner>,
+        remote_object_id: RemoteObjectId,
+    ) -> Result<Self> {
+        let node = tab
+            .execute(
+                DescribeNodeParams::builder()
+                    .object_id(remote_object_id.clone())
+                    .depth(100)
+                    .build(),
+            )
+            .await?
+            .result
+            .node;
+
+        Ok(Self {
+            remote_object_id,
+            backend_node_id: node.backend_node_id,
+            node_id: node.node_id,
+            tab,
+        })
+    }
+
     /// Convert a slice of `NodeId`s into a `Vec` of `Element`s
     pub(crate) async fn from_nodes(tab: &Arc<PageInner>, node_ids: &[NodeId]) -> Result<Vec<Self>> {
         future::join_all(
             node_ids
                 .iter()
                 .copied()
-                .map(|id| Element::new(Arc::clone(tab), id)),
+                .map(|id| Element::new_by_node_id(Arc::clone(tab), id)),
         )
         .await
         .into_iter()
@@ -87,7 +146,7 @@ impl Element {
     /// selector.
     pub async fn find_element(&self, selector: impl Into<String>) -> Result<Self> {
         let node_id = self.tab.find_element(selector, self.node_id).await?;
-        Element::new(Arc::clone(&self.tab), node_id).await
+        Element::new_by_node_id(Arc::clone(&self.tab), node_id).await
     }
 
     /// Return all `Element`s in the document that match the given selector
