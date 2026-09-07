@@ -487,7 +487,7 @@ impl Page {
     /// retrieve the HTML content of the page see `Page::content`.
     pub async fn get_document(&self) -> Result<Node> {
         let resp = self
-            .execute(GetDocumentParams::builder().pierce(true).build())
+            .execute(GetDocumentParams::builder().depth(100).pierce(true).build())
             .await?;
         Ok(resp.result.root)
     }
