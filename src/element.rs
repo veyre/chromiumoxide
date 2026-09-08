@@ -37,37 +37,85 @@ pub struct Element {
 }
 
 impl Element {
-    pub(crate) async fn new(tab: Arc<PageInner>, node_id: NodeId) -> Result<Self> {
-        let backend_node_id = tab
-            .execute(
-                DescribeNodeParams::builder()
-                    .node_id(node_id)
-                    .depth(100)
-                    .build(),
-            )
-            .await?
-            .node
-            .backend_node_id;
-
-        let resp = tab
-            .execute(
-                ResolveNodeParams::builder()
-                    .backend_node_id(backend_node_id)
-                    .build(),
-            )
-            .await?;
-
-        let remote_object_id = resp
-            .result
-            .object
-            .object_id
-            .ok_or_else(|| CdpError::msg(format!("No object Id found for {node_id:?}")))?;
-        Ok(Self {
-            remote_object_id,
-            backend_node_id,
-            node_id,
-            tab,
-        })
+    pub(crate) async fn new(tab: Arc<PageInner>, by: impl Into<NewBy>) -> Result<Self> {
+        match by.into() {
+            NewBy::NodeId(node_id) => {
+                let backend_node_id = tab
+                    .execute(
+                        DescribeNodeParams::builder()
+                            .node_id(node_id)
+                            .depth(100)
+                            .build(),
+                    )
+                    .await?
+                    .node
+                    .backend_node_id;
+                let resp = tab
+                    .execute(
+                        ResolveNodeParams::builder()
+                            .backend_node_id(backend_node_id)
+                            .build(),
+                    )
+                    .await?;
+                let remote_object_id =
+                    resp.result.object.object_id.ok_or_else(|| {
+                        CdpError::msg(format!("No object Id found for {node_id:?}"))
+                    })?;
+                Ok(Self {
+                    remote_object_id,
+                    backend_node_id,
+                    node_id,
+                    tab,
+                })
+            }
+            NewBy::BackendNodeId(backend_node_id) => {
+                let node_id = tab
+                    .execute(
+                        DescribeNodeParams::builder()
+                            .backend_node_id(backend_node_id)
+                            .depth(100)
+                            .build(),
+                    )
+                    .await?
+                    .node
+                    .node_id;
+                let resp = tab
+                    .execute(
+                        ResolveNodeParams::builder()
+                            .backend_node_id(backend_node_id)
+                            .build(),
+                    )
+                    .await?;
+                let remote_object_id =
+                    resp.result.object.object_id.ok_or_else(|| {
+                        CdpError::msg(format!("No object Id found for {node_id:?}"))
+                    })?;
+                Ok(Self {
+                    remote_object_id,
+                    backend_node_id,
+                    node_id,
+                    tab,
+                })
+            }
+            NewBy::RemoteObjectId(remote_object_id) => {
+                let node = tab
+                    .execute(
+                        DescribeNodeParams::builder()
+                            .object_id(remote_object_id.clone())
+                            .depth(100)
+                            .build(),
+                    )
+                    .await?
+                    .result
+                    .node;
+                Ok(Self {
+                    remote_object_id,
+                    backend_node_id: node.backend_node_id,
+                    node_id: node.node_id,
+                    tab,
+                })
+            }
+        }
     }
 
     /// Convert a slice of `NodeId`s into a `Vec` of `Element`s
@@ -460,6 +508,29 @@ impl Element {
         let img = self.screenshot(format).await?;
         utils::write(output.as_ref(), &img).await?;
         Ok(img)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum NewBy {
+    NodeId(NodeId),
+    BackendNodeId(BackendNodeId),
+    RemoteObjectId(RemoteObjectId),
+}
+
+impl From<NodeId> for NewBy {
+    fn from(node_id: NodeId) -> Self {
+        Self::NodeId(node_id)
+    }
+}
+impl From<BackendNodeId> for NewBy {
+    fn from(backend_node_id: BackendNodeId) -> Self {
+        Self::BackendNodeId(backend_node_id)
+    }
+}
+impl From<RemoteObjectId> for NewBy {
+    fn from(remote_object_id: RemoteObjectId) -> Self {
+        Self::RemoteObjectId(remote_object_id)
     }
 }
 

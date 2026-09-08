@@ -21,7 +21,7 @@ use chromiumoxide_cdp::cdp::js_protocol;
 use chromiumoxide_cdp::cdp::js_protocol::debugger::GetScriptSourceParams;
 use chromiumoxide_cdp::cdp::js_protocol::runtime::{
     AddBindingParams, CallArgument, CallFunctionOnParams, EvaluateParams, ExecutionContextId,
-    RemoteObjectType, ScriptId,
+    RemoteObjectId, RemoteObjectType, ScriptId,
 };
 use chromiumoxide_cdp::cdp::{IntoEventKind, browser_protocol};
 use chromiumoxide_types::*;
@@ -488,6 +488,10 @@ impl Page {
     pub async fn get_document(&self) -> Result<Node> {
         let resp = self.execute(GetDocumentParams::default()).await?;
         Ok(resp.result.root)
+    }
+
+    pub async fn get_element(&self, by: impl Into<crate::element::NewBy>) -> Result<Element> {
+        Element::new(Arc::clone(&self.inner), by.into()).await
     }
 
     /// Returns the first element in the document which matches the given CSS
@@ -1513,5 +1517,28 @@ impl From<MediaTypeParams> for String {
             MediaTypeParams::Screen => "screen".to_string(),
             MediaTypeParams::Print => "print".to_string(),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum GetElementBy {
+    NodeId(NodeId),
+    BackendNodeId(BackendNodeId),
+    RemoteObjectId(RemoteObjectId),
+}
+
+impl From<NodeId> for GetElementBy {
+    fn from(node_id: NodeId) -> Self {
+        Self::NodeId(node_id)
+    }
+}
+impl From<BackendNodeId> for GetElementBy {
+    fn from(backend_node_id: BackendNodeId) -> Self {
+        Self::BackendNodeId(backend_node_id)
+    }
+}
+impl From<RemoteObjectId> for GetElementBy {
+    fn from(remote_object_id: RemoteObjectId) -> Self {
+        Self::RemoteObjectId(remote_object_id)
     }
 }
