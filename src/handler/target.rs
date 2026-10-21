@@ -257,6 +257,18 @@ impl Target {
 
             // `Target` events
             CdpEvent::TargetAttachedToTarget(ev) => {
+                // Out-of-process iframes get no `Page`, so enable their metrics here, before they
+                // resume: the counters only include work done after `Performance.enable`.
+                if "iframe" == &ev.target_info.r#type {
+                    let enable_performance = performance::EnableParams::default();
+
+                    self.queued_events.push_back(TargetEvent::Request(Request {
+                        method: enable_performance.identifier(),
+                        session_id: Some(ev.session_id.clone().into()),
+                        params: serde_json::to_value(enable_performance).unwrap(),
+                    }));
+                }
+
                 if ev.waiting_for_debugger {
                     let runtime_cmd = RunIfWaitingForDebuggerParams::default();
 

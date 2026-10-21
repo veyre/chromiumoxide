@@ -14,8 +14,8 @@ use chromiumoxide_cdp::cdp::browser_protocol::storage::{
     ClearCookiesParams, GetCookiesParams, SetCookiesParams,
 };
 use chromiumoxide_cdp::cdp::browser_protocol::target::{
-    CreateBrowserContextParams, CreateTargetParams, DisposeBrowserContextParams, TargetId,
-    TargetInfo,
+    CreateBrowserContextParams, CreateTargetParams, DisposeBrowserContextParams, SessionId,
+    TargetId, TargetInfo,
 };
 use chromiumoxide_cdp::cdp::{CdpEventMessage, IntoEventKind};
 use chromiumoxide_types::*;
@@ -411,6 +411,25 @@ impl Browser {
         let (tx, rx) = oneshot_channel();
         let method = cmd.identifier();
         let msg = CommandMessage::new(cmd, tx)?;
+
+        self.sender
+            .clone()
+            .send(HandlerMessage::Command(msg))
+            .await?;
+        let resp = rx.await??;
+        to_command_response::<T>(resp, method)
+    }
+
+    /// Call a method in a specific session, e.g. one auto-attached to an out-of-process iframe,
+    /// which has no [`Page`] of its own.
+    pub async fn execute_with_session<T: Command>(
+        &self,
+        cmd: T,
+        session_id: SessionId,
+    ) -> Result<CommandResponse<T::Response>> {
+        let (tx, rx) = oneshot_channel();
+        let method = cmd.identifier();
+        let msg = CommandMessage::with_session(cmd, tx, Some(session_id))?;
 
         self.sender
             .clone()
